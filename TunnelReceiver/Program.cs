@@ -26,23 +26,31 @@ namespace TunnelReceiver
                 var rdp_listener = new TcpListener(IPAddress.Any, 3389);
                 Console.WriteLine("Ready for RDP connection");
                 rdp_listener.Start();
-                var rdp = rdp_listener.AcceptTcpClient();
-                Console.WriteLine("RDP Connected");
-                tunnel.GetStream().Write(new byte[1] { 0x77 }, 0, 1);
+                try
+                {
+                    using (var rdp = rdp_listener.AcceptTcpClient())
+                    {
+                        Console.WriteLine("RDP Connected");
+                        tunnel.GetStream().Write(new byte[1] { 0x77 }, 0, 1);
 
-                Console.WriteLine("Starting data forwarding");
-
-                var f1 = new Common.Forwarder(tunnel, rdp);
-                var f2 = new Common.Forwarder(rdp, tunnel);
-
-                ManualResetEvent connection_lost = new ManualResetEvent(false);
-                f1.connection_lost += () => { connection_lost.Set(); };
-                f2.connection_lost += () => { connection_lost.Set(); };
-                connection_lost.WaitOne();
-                tunnel_listener.Stop();
-                rdp_listener.Stop();
-                tunnel.Close();
-                rdp.Close();
+                        Console.WriteLine("Starting data forwarding");
+                        var f1 = new Common.Forwarder(tunnel, rdp);
+                        var f2 = new Common.Forwarder(rdp, tunnel);
+                        ManualResetEvent connection_lost = new ManualResetEvent(false);
+                        f1.connection_lost += () => { connection_lost.Set(); };
+                        f2.connection_lost += () => { connection_lost.Set(); };
+                        connection_lost.WaitOne();
+                    }
+                }
+                catch (System.IO.IOException)
+                {
+                }
+                finally
+                {
+                    tunnel_listener.Stop();
+                    rdp_listener.Stop();
+                    tunnel.Close();
+                }
             }
         }
 
