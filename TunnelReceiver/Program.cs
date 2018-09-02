@@ -31,6 +31,7 @@ namespace TunnelReceiver
                     using (var rdp = rdp_listener.AcceptTcpClient())
                     {
                         Console.WriteLine("RDP Connected");
+                        rdp.Client.SetSocketOption( SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true );
                         tunnel.GetStream().Write(new byte[1] { 0x77 }, 0, 1);
 
                         Console.WriteLine("Starting data forwarding");
