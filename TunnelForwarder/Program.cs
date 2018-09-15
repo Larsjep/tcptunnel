@@ -10,6 +10,7 @@ namespace tcpforward
 {
     class Program
     {
+        static readonly int timeout_minutes = 6;
         static void Worker(string tunnel_host, string rdp_server)
         {
             while (true)
@@ -21,12 +22,23 @@ namespace tcpforward
                         tunnel.Client.SetSocketOption( SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true );
                         Console.WriteLine("Tunnel Connected, waiting for start signal");
                         byte[] start_buffer = new byte[1];
-                        tunnel.GetStream().Read(start_buffer, 0, 1);
-                        if (start_buffer[0] != 0x77)
+                        var network_stream = tunnel.GetStream();
+                        network_stream.ReadTimeout = 1000 * 60 * timeout_minutes;
+
+                        var started = false;
+                        do
                         {
-                            Console.WriteLine(string.Format("Got invalid start character {0} :( !!!", start_buffer[0]));
-                            break;
+                            network_stream.Read(start_buffer, 0, 1);
+                            if (start_buffer[0] == Common.Constants.start_signal)
+                            {
+                                started = true;
+                            } else if (start_buffer[0] != Common.Constants.keealive_signal)
+                            {
+                                Console.WriteLine(string.Format("Got invalid start/keepalive character {0} :( !!!", start_buffer[0]));
+                                break;
+                            }
                         }
+                        while (!started);
 
                         using (var localrdp = new TcpClient())
                         {

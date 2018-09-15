@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -12,6 +12,7 @@ namespace TunnelReceiver
 {
     class Program
     {
+        static readonly int keepalive_interval_minutes = 5;
         static void Worker()
         {
             while (true)
@@ -20,19 +21,31 @@ namespace TunnelReceiver
                 Console.WriteLine("Tunnel listening");
                 tunnel_listener.Start();
                 var tunnel = tunnel_listener.AcceptTcpClient();
-                tunnel.Client.SetSocketOption( SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true );
                 Console.WriteLine("Tunnel connected");
 
                 var rdp_listener = new TcpListener(IPAddress.Any, 3389);
                 Console.WriteLine("Ready for RDP connection");
                 rdp_listener.Start();
+                var tunnel_stream = tunnel.GetStream();
+
+                var keep_alive_timer = new Timer((object obj) =>
+                    {
+                        tunnel_stream.Write(new byte[1] { Common.Constants.keealive_signal }, 0, 1);
+                    },
+                    null,
+                    1000 * 60 * keepalive_interval_minutes,
+                    1000 * 60 * keepalive_interval_minutes
+                    );
                 try
                 {
                     using (var rdp = rdp_listener.AcceptTcpClient())
                     {
                         Console.WriteLine("RDP Connected");
-                        rdp.Client.SetSocketOption( SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true );
-                        tunnel.GetStream().Write(new byte[1] { 0x77 }, 0, 1);
+                        // Stop the keepalive timer
+                        EventWaitHandle timer_stopped = new AutoResetEvent(false);
+                        keep_alive_timer.Dispose(timer_stopped);
+                        timer_stopped.WaitOne();
+                        tunnel_stream.Write(new byte[1] { Common.Constants.start_signal }, 0, 1);
 
                         Console.WriteLine("Starting data forwarding");
                         var f1 = new Common.Forwarder(tunnel, rdp);
@@ -58,13 +71,6 @@ namespace TunnelReceiver
 
         static void Main(string[] args)
         {
-            /*            EventWaitHandle stop = new ManualResetEvent(false);
-
-                        (new Thread(() =>
-                        {
-                            
-                        })).Start();
-                        */
             Thread worker = new Thread(Worker);
             Console.WriteLine("Stop by pressing ESC");
             worker.Start();
